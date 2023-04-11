@@ -6,7 +6,11 @@ import { generateAccessToken, generateActiveToken, generateRefreshToken } from "
 import sendEmail from "../config/sendEmail";
 import { validEmail, validPhone } from "../middleware/valid";
 import { sendSms } from "../config/sendSMS";
-import { IDecodedToken, IUser } from "../config/interface";
+import { IDecodedToken, IGgPayload, IUser, IUserParams } from "../config/interface";
+
+import { OAuth2Client } from 'google-auth-library'
+
+const client = new OAuth2Client(`${process.env.MAIL_CLIENT_ID}`)
 
 const authController = {
     register: async (req: Request, res: Response) => {
@@ -44,23 +48,24 @@ const authController = {
             const { newUser } = decoded
 
             if (!newUser) return res.status(400).json({ msg: 'Invalid authentication' })
-            const user = new Users(newUser)
 
-            await user.save()
+            console.log(newUser);
+
+            const user = await Users.findOne({ account: newUser.account })
+            if (user) return res.status(400).json({ msg: "This user already exists" })
+
+            const new_user = new Users(newUser)
+
+            await new_user.save()
             res.status(200).json({ msg: 'Account has been activated' })
 
         } catch (error: any) {
-            console.log(error);
-            let errMsg;
-            if (error.code === 11000) {
-                errMsg = Object.keys(error.keyValue)[0] + " already exists"
-            }
-            return res.status(500).json({ msg: errMsg })
+            return res.status(500).json({ msg: error.message })
         }
     },
     login: async (req: Request, res: Response) => {
-        console.log('in loginn');
-        
+        console.log('in login');
+
         try {
             const { account, password } = req.body
 
@@ -92,13 +97,47 @@ const authController = {
             const user = await Users.findById(decoded.id).select("-password")
             if (!user) return res.status(400).json({ msg: 'This account does not exist.' })
 
-            const access_token = generateAccessToken({id:user._id})
+            const access_token = generateAccessToken({ id: user._id })
 
-            res.json({ access_token})
+            res.json({ access_token, user })
 
         } catch (err: any) {
-            console.log('error');
+            return res.status(500).json({ msg: err.message })
+        }
+    },
+    googleLogin: async (req: Request, res: Response) => {
+        try {
+            const { id_token } = req.body
+            const verify = await client.verifyIdToken({
+                idToken: id_token, audience: `${process.env.MAIL_CLIENT_ID}`
+            })
 
+            const { email, email_verified, name, picture } = <IGgPayload>verify.getPayload()
+
+            console.log({ email, email_verified, name, picture });
+
+            if (!email_verified)
+                return res.status(500).json({ msg: "Email verification failed." })
+
+            const password = email + 'your google secret password'
+            const passwordHash = await bcrypt.hash(password, 12)
+
+            const user = await Users.findOne({ account: email })
+
+            if (user) {
+                loginUser(user, password, res)
+            } else {
+                const user = {
+                    name,
+                    account: email,
+                    password: passwordHash,
+                    avatar: picture,
+                    type: 'login'
+                }
+                registerUser(user, res)
+            }
+
+        } catch (err: any) {
             return res.status(500).json({ msg: err.message })
         }
     }
@@ -123,5 +162,27 @@ const loginUser = async (user: IUser, password: string, res: Response) => {
         user: { ...user._doc, password: '' }
     })
 }
+
+const registerUser = async (user: IUserParams, res: Response) => {
+
+    const newUser = new Users(user)
+    await newUser.save()
+
+    const access_token = generateAccessToken({ id: newUser._id })
+    const refresh_token = generateRefreshToken({ id: newUser._id })
+
+    res.cookie('refreshtoken', refresh_token, {
+        httpOnly: true,
+        path: `/api/refresh_token`,
+        maxAge: 30 * 24 * 60 * 60 * 1000
+    })
+
+    res.json({
+        msg: 'Login Success!',
+        access_token,
+        user: { ...newUser._doc, password: '' }
+    })
+}
+
 
 export default authController;

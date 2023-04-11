@@ -11,11 +11,15 @@ export interface IParams {
     page?: string
     slug?: string
 }
-
 export interface IUserLogin {
     account: string
     password: string
 }
+
+export interface IUserRegister extends IUserLogin{
+    name: string;
+    cf_password: string;
+} 
 
 export interface IUser extends IUserLogin {
     avatar: string

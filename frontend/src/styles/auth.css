@@ -26,3 +26,15 @@
     transform: translateY(-50%);
     opacity: 0.5;
 }
+
+.auth_page input::placeholder{
+    opacity: 0.5;
+    font-size: 80%;
+}
+
+.auth_page a{
+    text-decoration: none;
+}
+.auth_page a:hover{
+    text-decoration: underline;
+}
