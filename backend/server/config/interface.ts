@@ -34,6 +34,6 @@ export interface IUserParams {
     name: string
     account: string
     password: string
-    avatar: string
+    avatar?: string
     type: string
 }

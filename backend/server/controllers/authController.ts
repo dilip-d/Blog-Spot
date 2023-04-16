@@ -9,6 +9,7 @@ import { sendSms } from "../config/sendSMS";
 import { IDecodedToken, IGgPayload, IUser, IUserParams } from "../config/interface";
 
 import { OAuth2Client } from 'google-auth-library'
+import fetch from 'node-fetch'
 
 const client = new OAuth2Client(`${process.env.MAIL_CLIENT_ID}`)
 
@@ -114,8 +115,6 @@ const authController = {
 
             const { email, email_verified, name, picture } = <IGgPayload>verify.getPayload()
 
-            console.log({ email, email_verified, name, picture });
-
             if (!email_verified)
                 return res.status(500).json({ msg: "Email verification failed." })
 
@@ -132,6 +131,42 @@ const authController = {
                     account: email,
                     password: passwordHash,
                     avatar: picture,
+                    type: 'login'
+                }
+                registerUser(user, res)
+            }
+
+        } catch (err: any) {
+            return res.status(500).json({ msg: err.message })
+        }
+    },
+    facebookLogin: async (req: Request, res: Response) => {
+        try {
+            console.log('facebookkk', req.body);
+
+            const { accessToken, userID } = req.body
+
+            const URL = `https://graph.facebook.com/v3.0/${userID}/?fields=id,name,email,picture&access_token=${accessToken}`
+
+            const data = await fetch(URL)
+                .then(res => res.json())
+                .then(res => { return res })
+
+            const { name, email, picture } = data
+
+            const password = email + 'your facebook secret password'
+            const passwordHash = await bcrypt.hash(password, 12)
+
+            const user = await Users.findOne({ account: email })
+
+            if (user) {
+                loginUser(user, password, res)
+            } else {
+                const user = {
+                    name,
+                    account: email,
+                    password: passwordHash,
+                    avatar: picture.data.url,
                     type: 'login'
                 }
                 registerUser(user, res)
